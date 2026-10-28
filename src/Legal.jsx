@@ -7,7 +7,7 @@ function Privacy() {
     <p className="legal-lead">Informativa sul trattamento dei dati personali dei membri e dei visitatori, ai sensi degli artt. 13 e 14 del Regolamento (UE) 2016/679 (“GDPR”) e del D.Lgs. 196/2003 come modificato dal D.Lgs. 101/2018.</p>
 
     <h2>1. Titolare del trattamento</h2>
-    <p>{CONTROLLER.name} — {CONTROLLER.vat}<br />Sede: {CONTROLLER.address}<br />Email: <a href={`mailto:${CONTROLLER.email}`}>{CONTROLLER.email}</a></p>
+    <p>{CONTROLLER.name}<br />{CONTROLLER.vat} — {CONTROLLER.taxCode}<br />Sede: {CONTROLLER.address}<br />Legale rappresentante: {CONTROLLER.representative}<br />Email: <a href={`mailto:${CONTROLLER.email}`}>{CONTROLLER.email}</a></p>
 
     <h2>2. Quali dati trattiamo</h2>
     <ul>
@@ -89,7 +89,7 @@ function Cookie() {
     <p>Puoi cancellare in ogni momento cookie e dati dei siti dalle impostazioni del browser. Bloccare gli strumenti tecnici può impedire l’accesso all’area membri.</p>
 
     <h2>Titolare</h2>
-    <p>{CONTROLLER.name} — {CONTROLLER.address} — <a href={`mailto:${CONTROLLER.email}`}>{CONTROLLER.email}</a>. Per maggiori informazioni sul trattamento dei dati leggi l’<a href="/privacy">informativa privacy</a>.</p>
+    <p>{CONTROLLER.name} — {CONTROLLER.vat} — {CONTROLLER.address} — <a href={`mailto:${CONTROLLER.email}`}>{CONTROLLER.email}</a>. Per maggiori informazioni sul trattamento dei dati leggi l’<a href="/privacy">informativa privacy</a>.</p>
   </>;
 }
 
@@ -98,7 +98,7 @@ export default function Legal({ page, go }) {
     <header className="legal-head"><button type="button" onClick={() => go('home')}><ArrowLeft size={18} /> BASE</button><nav><a href="/privacy" className={page === 'privacy' ? 'active' : ''} onClick={(e) => { e.preventDefault(); go('privacy'); }}>Privacy</a><a href="/cookie" className={page === 'cookie' ? 'active' : ''} onClick={(e) => { e.preventDefault(); go('cookie'); }}>Cookie</a></nav></header>
     <article className="legal-body">
       {page === 'privacy' ? <Privacy /> : <Cookie />}
-      <p className="legal-updated">Ultimo aggiornamento: {LEGAL_UPDATED}</p>
+      <p className="legal-updated">Ultimo aggiornamento: {LEGAL_UPDATED} · {CONTROLLER.name} · {CONTROLLER.vat} · {CONTROLLER.taxCode}</p>
     </article>
   </main>;
 }

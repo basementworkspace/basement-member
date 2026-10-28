@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import { rustTexture } from './rust';
 import { toMs, usePoster } from './lib';
+import { CONTROLLER } from './legal';
 import './landing.css';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -282,6 +283,6 @@ export default function Landing({ events, ready = true, user, onJoin, onLogin, o
       </section>
     </main>
 
-    <footer className="lp-foot"><div className="lp-big" aria-hidden="true">BASE</div><small><span>© BASE by Evening 2026</span><button type="button" onClick={goMember}>{memberCta} →</button><span className="lp-legal"><a href="/privacy" onClick={(e) => { e.preventDefault(); onNavigate?.('privacy'); }}>Privacy</a><a href="/cookie" onClick={(e) => { e.preventDefault(); onNavigate?.('cookie'); }}>Cookie</a></span></small></footer>
+    <footer className="lp-foot"><div className="lp-big" aria-hidden="true">BASE</div><small><span>© 2026 {CONTROLLER.name}<br />{CONTROLLER.address} · {CONTROLLER.vat} · {CONTROLLER.taxCode}</span><button type="button" onClick={goMember}>{memberCta} →</button><span className="lp-legal"><a href="/privacy" onClick={(e) => { e.preventDefault(); onNavigate?.('privacy'); }}>Privacy</a><a href="/cookie" onClick={(e) => { e.preventDefault(); onNavigate?.('cookie'); }}>Cookie</a></span></small></footer>
   </div>;
 }

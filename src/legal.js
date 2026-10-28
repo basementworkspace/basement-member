@@ -1,9 +1,10 @@
-// Dati del titolare del trattamento: compaiono in informativa privacy e cookie policy.
-// ⚠️ Completare i campi segnati con "DA COMPLETARE" prima della messa online definitiva.
+// Dati del titolare del trattamento: compaiono in informativa privacy, cookie policy e footer.
 export const CONTROLLER = {
-  name: 'BASE by Evening — DA COMPLETARE: ragione sociale',
-  vat: 'DA COMPLETARE: P.IVA / codice fiscale',
-  address: 'Via Sbarri, 81059 Caianello (CE)',
+  name: 'BASE — Associazione culturale e di intrattenimento',
+  representative: 'Gianmarco Del Sesto',
+  vat: 'P.IVA 04986130617',
+  taxCode: 'C.F. 95028960615',
+  address: 'Via Pietrabianca n. 28, Vairano Scalo (CE)',
   email: 'base.basement.workspace@gmail.com',
 };
 
