@@ -129,3 +129,18 @@ export function useNow(interval = 30_000) {
   }, [interval]);
   return now;
 }
+
+// Telefono: tolgo spazi e separatori; un cellulare italiano senza prefisso diventa +39…
+export function normalizePhone(value) {
+  let s = (value || '').replace(/[\s\-./()]/g, '');
+  if (s.startsWith('00')) s = `+${s.slice(2)}`;
+  if (/^3\d{8,9}$/.test(s)) s = `+39${s}`;
+  return s;
+}
+export const isValidPhone = (value) => /^\+?[0-9]{8,15}$/.test(value);
+
+// Documento d'identità: solo lettere maiuscole e cifre (es. CA12345AB per la CIE).
+export const normalizeIdNumber = (value) => (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+export const isValidIdNumber = (value) => /^[A-Z0-9]{5,20}$/.test(value);
+
+export const maskIdNumber = (value) => (value && value.length > 4 ? `${value.slice(0, 2)}${'•'.repeat(value.length - 4)}${value.slice(-2)}` : value || '—');

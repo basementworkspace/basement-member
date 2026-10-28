@@ -42,7 +42,7 @@ export function rustTexture(w, h, letter) {
   }
   cx.putImageData(ci, 0, 0); bx.putImageData(bi, 0, 0);
   if (letter) {
-    cx.font = bx.font = `900 ${h * 0.66}px Archivo`;
+    cx.font = bx.font = `900 ${h * 0.66}px "Archivo Variable"`;
     cx.textAlign = bx.textAlign = 'center'; cx.textBaseline = bx.textBaseline = 'middle';
     bx.fillStyle = '#000'; bx.fillText(letter, w / 2, h * 0.53);
     cx.fillStyle = 'rgba(8,3,1,.7)'; cx.fillText(letter, w / 2, h * 0.53);

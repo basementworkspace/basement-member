@@ -2,19 +2,23 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   ArrowLeft, ArrowRight, BadgeCheck, Eye, EyeOff, LockKeyhole, LogOut, Mail, MapPin, QrCode, ShieldCheck, Ticket, Users, X,
 } from 'lucide-react';
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
+import { onIdTokenChanged, createUserWithEmailAndPassword, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
-import { auth, db, isAdminUser } from './firebase';
+import { auth, db, isAdminEmail, isAdminUser } from './firebase';
+import { AdminVerify, CompleteProfile, ConsentFields, CookieBanner, MyData, PersonFields, createProfile, emptyConsents, emptyPerson, validatePerson } from './Account.jsx';
 import { ADMIN_PATH, decorateEvent, isEventLive, randomCode, ticketPayload, ticketShortCode, toMs, useNow, usePoster } from './lib';
 
 const AdminArea = lazy(() => import('./Admin.jsx'));
 const Landing = lazy(() => import('./Landing.jsx'));
+const Legal = lazy(() => import('./Legal.jsx'));
 
 function resolveView() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   if (path === ADMIN_PATH) return 'admin';
   if (path === '/profilo') return 'profile';
+  if (path === '/privacy') return 'privacy';
+  if (path === '/cookie') return 'cookie';
   return 'home';
 }
 
@@ -26,10 +30,10 @@ function useLocationView() {
     return () => window.removeEventListener('popstate', sync);
   }, []);
   const go = useCallback((next) => {
-    const route = next === 'admin' ? ADMIN_PATH : next === 'profile' ? '/profilo' : '/';
+    const route = { admin: ADMIN_PATH, profile: '/profilo', privacy: '/privacy', cookie: '/cookie' }[next] || '/';
     if (window.location.pathname !== route) window.history.pushState({}, '', route);
     setView(next);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0 });
   }, []);
   return [view, go];
 }
@@ -55,23 +59,26 @@ const authMessages = {
 };
 
 function AuthModal({ mode, setMode, onClose, onDone }) {
-  const [values, setValues] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [person, setPerson] = useState(emptyPerson);
+  const [consents, setConsents] = useState(emptyConsents);
+  const [values, setValues] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [note, setNote] = useState('');
   const signup = mode === 'signup';
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault(); setError(''); setNote('');
+    if (signup) {
+      const problem = validatePerson(person);
+      if (problem) { setError(problem); return; }
+    }
+    setBusy(true);
     try {
       if (signup) {
-        const firstName = values.firstName.trim();
-        const lastName = values.lastName.trim();
         const credential = await createUserWithEmailAndPassword(auth, values.email.trim(), values.password);
-        const fullName = `${firstName} ${lastName}`;
-        await updateProfile(credential.user, { displayName: fullName });
-        await setDoc(doc(db, 'profiles', credential.user.uid), {
-          uid: credential.user.uid, firstName, lastName, fullName, email: credential.user.email, createdAt: serverTimestamp(),
-        });
+        await updateProfile(credential.user, { displayName: `${person.firstName.trim()} ${person.lastName.trim()}` });
+        await createProfile(credential.user, person, consents);
         onDone(credential.user);
       } else {
         const credential = await signInWithEmailAndPassword(auth, values.email.trim(), values.password);
@@ -81,6 +88,12 @@ function AuthModal({ mode, setMode, onClose, onDone }) {
       setError(authMessages[err.code] || 'Non è stato possibile completare l’operazione.');
     } finally { setBusy(false); }
   };
+  const resetPassword = async () => {
+    setError(''); setNote('');
+    if (!values.email.trim()) { setError('Scrivi prima la tua email qui sopra.'); return; }
+    try { await sendPasswordResetEmail(auth, values.email.trim()); } catch { /* non riveliamo se l'email esiste */ }
+    setNote('Se l’email è registrata, riceverai a breve il link per reimpostare la password.');
+  };
   return <div className="modal-scrim" data-lenis-prevent onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <button className="icon-button modal-close" onClick={onClose} aria-label="Chiudi"><X size={20} /></button>
@@ -88,17 +101,17 @@ function AuthModal({ mode, setMode, onClose, onDone }) {
       <h2 id="auth-title">{signup ? <>La notte<br /><em>ti aspetta.</em></> : <>Bentornato<br /><em>sotto.</em></>}</h2>
       <p className="modal-intro">{signup ? 'Crea il tuo profilo. Il prossimo ingresso è già tuo.' : 'Accedi per ritrovare i tuoi eventi e i tuoi QR.'}</p>
       <form className="auth-form" onSubmit={submit}>
-        {signup && <div className="name-row">
-          <label>Nome<input required maxLength={60} autoComplete="given-name" value={values.firstName} onChange={(e) => setValues({ ...values, firstName: e.target.value })} placeholder="Il tuo nome" /></label>
-          <label>Cognome<input required maxLength={60} autoComplete="family-name" value={values.lastName} onChange={(e) => setValues({ ...values, lastName: e.target.value })} placeholder="Il tuo cognome" /></label>
-        </div>}
-        <label>Email<span className="input-wrap"><Mail size={16} /><input type="email" required autoComplete="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} placeholder="nome@email.com" /></span></label>
+        {signup && <PersonFields values={person} setValues={setPerson} />}
+        <label>Email<span className="input-wrap"><Mail size={16} /><input type="email" required autoComplete="email" inputMode="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} placeholder="nome@email.com" /></span></label>
         <label>Password<span className="input-wrap"><LockKeyhole size={16} /><input type={showPassword ? 'text' : 'password'} required minLength={6} autoComplete={signup ? 'new-password' : 'current-password'} value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} placeholder="Almeno 6 caratteri" /><button type="button" className="reveal-password" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Nascondi password' : 'Mostra password'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>
+        {!signup && <button type="button" className="text-button forgot" onClick={resetPassword}>Password dimenticata?</button>}
+        {signup && <ConsentFields consents={consents} setConsents={setConsents} />}
         {error && <p className="form-error">{error}</p>}
+        {note && <p className="form-note">{note}</p>}
         <Button disabled={busy} className="auth-submit">{busy ? 'UN ATTIMO…' : signup ? 'DIVENTA MEMBRO' : 'ACCEDI'} <ArrowRight size={17} /></Button>
       </form>
-      <p className="auth-switch">{signup ? 'Hai già un profilo?' : 'È la tua prima notte?'} <button onClick={() => { setError(''); setMode(signup ? 'login' : 'signup'); }}>{signup ? 'Accedi' : 'Diventa membro'}</button></p>
-      <div className="modal-foot"><ShieldCheck size={14} /> I tuoi dati restano al sicuro.</div>
+      <p className="auth-switch">{signup ? 'Hai già un profilo?' : 'È la tua prima notte?'} <button onClick={() => { setError(''); setNote(''); setMode(signup ? 'login' : 'signup'); }}>{signup ? 'Accedi' : 'Diventa membro'}</button></p>
+      <div className="modal-foot"><ShieldCheck size={14} /> Dati protetti e visibili solo a te e allo staff. <a href="/privacy" target="_blank" rel="noreferrer">Privacy</a></div>
     </section>
   </div>;
 }
@@ -133,13 +146,13 @@ function TicketCard({ event, ticket, index, total }) {
   </div>;
 }
 
-function MemberArea({ user, profile, profileState, liveEvents, tickets, go, onLogout }) {
+function MemberArea({ user, profile, profileState, liveEvents, events, tickets, go, onLogout }) {
   const name = profile?.firstName || user?.displayName?.split(' ')[0] || 'Membro';
   const ticketsByEvent = useMemo(() => new Map(tickets.map((t) => [t.eventId, t])), [tickets]);
   const blocked = profile?.blocked === true;
   let body;
   if (profileState === 'missing') {
-    body = <div className="empty-ticket"><div className="empty-qr"><X size={34} /></div><div><span className="eyebrow">PROFILO NON TROVATO</span><h2>Il tuo profilo<br /><em>non è attivo.</em></h2><p>Questo account non risulta più iscritto a BASE. Contatta lo staff se pensi sia un errore.</p><Button onClick={onLogout}>ESCI <LogOut size={17} /></Button></div><div className="empty-orbit" /></div>;
+    body = <CompleteProfile user={user} onLogout={onLogout} />;
   } else if (blocked) {
     body = <div className="empty-ticket"><div className="empty-qr"><LockKeyhole size={34} /></div><div><span className="eyebrow">ACCOUNT SOSPESO</span><h2>Il tuo accesso<br /><em>è sospeso.</em></h2><p>Al momento non puoi ricevere QR per gli eventi. Contatta lo staff di BASE.</p></div><div className="empty-orbit" /></div>;
   } else if (liveEvents.length) {
@@ -155,6 +168,8 @@ function MemberArea({ user, profile, profileState, liveEvents, tickets, go, onLo
         <div className="ticket-heading"><span>I TUOI INGRESSI</span><span className="mono">{String(liveEvents.length).padStart(2, '0')} {liveEvents.length === 1 ? 'EVENTO' : 'EVENTI'}</span></div>
         {profileState === 'loading' ? <div className="empty-ticket"><div className="loading-cube">B</div></div> : body}
         <div className="member-note"><ShieldCheck size={17} /><span>Ogni QR è personale, vale per un solo ingresso e scade a fine evento. <strong>Non condividerlo.</strong></span></div>
+        {profileState === 'ready' && profile && <MyData user={user} profile={profile} tickets={tickets} events={events} />}
+        <footer className="member-legal"><a href="/privacy" onClick={(e) => { e.preventDefault(); go('privacy'); }}>Privacy</a><a href="/cookie" onClick={(e) => { e.preventDefault(); go('cookie'); }}>Cookie</a><button type="button" onClick={onLogout}>Esci</button></footer>
       </section></div>
   </main>;
 }
@@ -172,12 +187,18 @@ export default function App() {
   const [authMode, setAuthMode] = useState('signup');
   const [authOpen, setAuthOpen] = useState(false);
   const [firebaseIssue, setFirebaseIssue] = useState('');
+  const [, setAuthTick] = useState(0);
   const requested = useRef(new Set());
   const now = useNow();
   const admin = isAdminUser(user);
+  const adminPending = isAdminEmail(user) && !admin; // email admin non ancora verificata
+  const staff = admin || adminPending;
 
-  useEffect(() => onAuthStateChanged(auth, (current) => {
-    setUser(current); setAuthReady(true); requested.current = new Set();
+  // onIdTokenChanged scatta anche dopo la verifica email dell'admin (token aggiornato).
+  useEffect(() => onIdTokenChanged(auth, (current) => {
+    setUser((prev) => { if (prev?.uid !== current?.uid) requested.current = new Set(); return current; });
+    setAuthTick((t) => t + 1);
+    setAuthReady(true);
   }), []);
 
   // Eventi pubblicati: alimentano landing e profilo, in tempo reale.
@@ -187,7 +208,7 @@ export default function App() {
 
   useEffect(() => {
     setProfile(null); setProfileState('loading');
-    if (!user || admin) return undefined;
+    if (!user || staff) return undefined;
     // Subito dopo la registrazione il profilo può non esistere ancora: diamo qualche secondo prima di dichiararlo mancante.
     let timer = 0;
     const unsub = onSnapshot(doc(db, 'profiles', user.uid), (snap) => {
@@ -196,21 +217,21 @@ export default function App() {
       else timer = window.setTimeout(() => setProfileState('missing'), 5000);
     }, (error) => setFirebaseIssue(error.message));
     return () => { unsub(); window.clearTimeout(timer); };
-  }, [user, admin]);
+  }, [user, staff]);
 
   useEffect(() => {
     setTickets([]); setTicketsReady(false);
-    if (!user || admin) return undefined;
+    if (!user || staff) return undefined;
     return onSnapshot(query(collection(db, 'tickets'), where('uid', '==', user.uid)),
       (snapshot) => { setTickets(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))); setTicketsReady(true); },
       (error) => setFirebaseIssue(error.message));
-  }, [user, admin]);
+  }, [user, staff]);
 
   const liveEvents = useMemo(() => events.filter((e) => isEventLive(e, now)).sort((a, b) => toMs(a.startAt) - toMs(b.startAt)).map(decorateEvent), [events, now]);
 
   // Ogni membro attivo riceve un QR unico per ogni evento in programma.
   useEffect(() => {
-    if (!user || admin || !ticketsReady || profileState !== 'ready' || profile?.blocked) return;
+    if (!user || staff || !ticketsReady || profileState !== 'ready' || profile?.blocked) return;
     const owned = new Set(tickets.map((t) => t.eventId));
     liveEvents.filter((e) => !owned.has(e.id) && !requested.current.has(e.id)).forEach((event) => {
       requested.current.add(event.id);
@@ -218,30 +239,36 @@ export default function App() {
         uid: user.uid, eventId: event.id, code: randomCode(), status: 'issued', createdAt: serverTimestamp(),
       }).catch(() => { window.setTimeout(() => requested.current.delete(event.id), 15_000); });
     });
-  }, [user, admin, profile, profileState, liveEvents, tickets, ticketsReady]);
+  }, [user, staff, profile, profileState, liveEvents, tickets, ticketsReady]);
 
   useEffect(() => {
     if (!authReady) return;
-    if (view === 'admin' && user && !admin) go('profile');
+    if (view === 'admin' && user && !staff) go('profile');
+    if (view === 'profile' && staff) go('admin');
     if ((view === 'profile' || view === 'admin') && !user) { setAuthMode('login'); setAuthOpen(true); }
-  }, [view, user, admin, authReady, go]);
+  }, [view, user, staff, authReady, go]);
 
   const logout = async () => { await signOut(auth); go('home'); };
   const openAuth = (mode) => {
-    if (user) { go(admin ? 'admin' : 'profile'); return; }
+    if (user) { go(staff ? 'admin' : 'profile'); return; }
     setAuthMode(mode); setAuthOpen(true);
   };
-  const onAuthDone = (current) => { setAuthOpen(false); go(isAdminUser(current) ? 'admin' : 'profile'); };
+  const onAuthDone = (current) => { setAuthOpen(false); go(isAdminEmail(current) ? 'admin' : 'profile'); };
 
-  const showProfile = view === 'profile' && user && !admin;
+  const showProfile = view === 'profile' && user && !staff;
   const showAdmin = view === 'admin' && user && admin;
+  const showAdminVerify = view === 'admin' && user && adminPending;
+  const showLegal = view === 'privacy' || view === 'cookie';
   const loadingScreen = <div className="loading-screen"><div className="loading-cube">B</div><span>ENTRIAMO SOTTO.</span></div>;
 
   return <>
     {!authReady && view !== 'home' ? loadingScreen : null}
-    {authReady && showProfile ? <MemberArea user={user} profile={profile} profileState={profileState} liveEvents={liveEvents} tickets={tickets} go={go} onLogout={logout} /> : null}
+    {authReady && showProfile ? <MemberArea user={user} profile={profile} profileState={profileState} liveEvents={liveEvents} events={events} tickets={tickets} go={go} onLogout={logout} /> : null}
     {authReady && showAdmin ? <Suspense fallback={loadingScreen}><AdminArea user={user} go={go} onLogout={logout} /></Suspense> : null}
-    {(view === 'home' || (authReady && !showProfile && !showAdmin)) && <Suspense fallback={loadingScreen}><Landing events={liveEvents} ready={eventsReady} user={user && !admin ? user : null} onJoin={() => openAuth('signup')} onLogin={() => openAuth('login')} onProfile={() => go(admin ? 'admin' : 'profile')} /></Suspense>}
+    {authReady && showAdminVerify ? <AdminVerify user={user} onLogout={logout} onRefresh={() => setAuthTick((t) => t + 1)} /> : null}
+    {showLegal && <Suspense fallback={loadingScreen}><Legal page={view} go={go} /></Suspense>}
+    {!showLegal && (view === 'home' || (authReady && !showProfile && !showAdmin && !showAdminVerify)) && <Suspense fallback={loadingScreen}><Landing events={liveEvents} ready={eventsReady} user={user && !staff ? user : null} onJoin={() => openAuth('signup')} onLogin={() => openAuth('login')} onProfile={() => go(staff ? 'admin' : 'profile')} onNavigate={go} /></Suspense>}
+    {view !== 'admin' && <CookieBanner onOpenPolicy={() => go('cookie')} />}
     {firebaseIssue && !authOpen && <div className="firebase-status" role="status"><span className="live-pulse" /> CONNESSIONE AL DATABASE NON RIUSCITA <button onClick={() => setFirebaseIssue('')} aria-label="Chiudi"><X size={13} /></button></div>}
     {authOpen && <AuthModal mode={authMode} setMode={setAuthMode} onClose={() => { setAuthOpen(false); if (view !== 'home' && !user) go('home'); }} onDone={onAuthDone} />}
   </>;

@@ -5,12 +5,12 @@ import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
 // La configurazione web Firebase è pubblica: la protezione dei dati è affidata
 // alle regole Firestore (firestore.rules), mai a questo oggetto.
 const firebaseConfig = {
-  apiKey: 'AIzaSyAwTdJT2Fbm_KpGHP7B8SGCrgA4q2FChY8',
-  authDomain: 'codebasemant.firebaseapp.com',
-  projectId: 'codebasemant',
-  storageBucket: 'codebasemant.firebasestorage.app',
-  messagingSenderId: '748048430427',
-  appId: '1:748048430427:web:ffb18d98a9494a877e567e',
+  apiKey: 'AIzaSyCyu5aUnaOXeAVC7yWjb4meRJxFTg4f2mA',
+  authDomain: 'basement-fa904.firebaseapp.com',
+  projectId: 'basement-fa904',
+  storageBucket: 'basement-fa904.firebasestorage.app',
+  messagingSenderId: '787081574880',
+  appId: '1:787081574880:web:89e90d9b326b63d7451385',
 };
 
 const app = initializeApp(firebaseConfig);
@@ -24,5 +24,7 @@ if (import.meta.env.VITE_USE_EMULATORS === 'true') {
 }
 
 // Deve coincidere con l'email in firestore.rules → isAdmin().
-export const ADMIN_EMAIL = 'base@admin.com';
-export const isAdminUser = (user) => user?.email?.toLowerCase() === ADMIN_EMAIL;
+export const ADMIN_EMAIL = 'base.basement.workspace@gmail.com';
+export const isAdminEmail = (user) => user?.email?.toLowerCase() === ADMIN_EMAIL;
+// L'admin deve aver verificato l'email (le regole Firestore lo richiedono).
+export const isAdminUser = (user) => isAdminEmail(user) && user.emailVerified === true;

@@ -8,7 +8,7 @@ gsap.registerPlugin(ScrollTrigger);
 // Cubo in acciaio corten con la B incisa, riflessi da "studio" e scintille.
 // Segue lo scroll della pagina e il mouse. Restituisce una funzione per fermarlo.
 export async function startCube(canvas, { reducedMotion = false } = {}) {
-  if (document.fonts?.load) await Promise.race([document.fonts.load('900 200px Archivo'), new Promise((r) => { setTimeout(r, 1500); })]);
+  if (document.fonts?.load) await Promise.race([document.fonts.load('900 200px "Archivo Variable"'), new Promise((r) => { setTimeout(r, 1500); })]);
 
   const desk = window.innerWidth > 800;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });

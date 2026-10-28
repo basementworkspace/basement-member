@@ -118,10 +118,31 @@ function Reports({ profiles, events, tickets, now, onNewEvent }) {
       </div>) : <p className="admin-empty-line">Nessun evento pubblicato. Crea il primo per generare i QR dei membri.</p>}
     </div>
 
+    <RetentionPanel events={events} tickets={tickets} now={now} />
+
     <div className="admin-list-head"><h3>MEMBRI PIÙ PRESENTI</h3></div>
     <div className="adm-table">
       {topMembers.length ? topMembers.map((row, i) => <div className="adm-tr adm-top-row" key={row.uid}><span className="mono">#{pad2(i + 1)}</span><strong>{row.profile?.fullName || 'Profilo eliminato'}</strong><span>{row.profile?.email || '—'}</span><span>{row.count} {row.count === 1 ? 'ingresso' : 'ingressi'}</span></div>) : <p className="admin-empty-line">La classifica comparirà dopo i primi ingressi.</p>}
     </div>
+  </div>;
+}
+
+// Conservazione dati (informativa privacy): QR e storico ingressi al massimo 12 mesi dopo l'evento.
+function RetentionPanel({ events, tickets, now }) {
+  const [busy, setBusy] = useState(false);
+  const limit = now - 365 * 864e5;
+  const oldEvents = new Set(events.filter((e) => toMs(e.endAt) && toMs(e.endAt) < limit).map((e) => e.id));
+  const known = new Set(events.map((e) => e.id));
+  const expired = tickets.filter((t) => oldEvents.has(t.eventId) || !known.has(t.eventId));
+  const clean = async () => {
+    if (!window.confirm(`Eliminare ${expired.length} QR di eventi terminati da più di 12 mesi (o eliminati)?`)) return;
+    setBusy(true);
+    try { await commitInChunks(expired.map((t) => doc(db, 'tickets', t.id)), (b, ref) => b.delete(ref)); } catch (err) { window.alert(err.message); } finally { setBusy(false); }
+  };
+  return <div className="adm-retention">
+    <ShieldCheck size={16} />
+    <span>{expired.length ? `${expired.length} QR oltre il periodo di conservazione (12 mesi).` : 'Dati in regola: nessun QR oltre i 12 mesi di conservazione.'}</span>
+    {expired.length > 0 && <button type="button" disabled={busy} onClick={clean}>{busy ? 'PULIZIA…' : 'ELIMINA ORA'}</button>}
   </div>;
 }
 
@@ -255,15 +276,49 @@ function EventsView({ events, tickets, now, editing, setEditing }) {
 
 /* ───────────────────────── MEMBRI ───────────────────────── */
 
+const memberRows = (profiles, tickets) => profiles.map((p) => ({
+  name: p.fullName || `${p.firstName} ${p.lastName}`, firstName: p.firstName, lastName: p.lastName, email: p.email,
+  phone: p.phone || '', idNumber: p.idNumber || '', joined: formatDateTime(p.createdAt).split(',')[0],
+  entries: tickets.filter((t) => t.uid === p.id && t.status === 'used').length,
+  marketing: p.marketing ? 'Sì' : 'No', status: p.blocked ? 'Sospeso' : 'Attivo',
+}));
+
 function exportCsv(profiles, tickets) {
-  const rows = [['Nome', 'Cognome', 'Email', 'Iscrizione', 'Ingressi', 'Stato']];
-  profiles.forEach((p) => rows.push([p.firstName, p.lastName, p.email, formatDateTime(p.createdAt), tickets.filter((t) => t.uid === p.id && t.status === 'used').length, p.blocked ? 'Sospeso' : 'Attivo']));
+  const rows = [['Nome', 'Cognome', 'Email', 'Telefono', 'Documento', 'Iscrizione', 'Ingressi', 'Comunicazioni', 'Stato']];
+  memberRows(profiles, tickets).forEach((r) => rows.push([r.firstName, r.lastName, r.email, r.phone, r.idNumber, r.joined, r.entries, r.marketing, r.status]));
   const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }));
+  link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
   link.download = `membri-base-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+// PDF A4 orizzontale con l'elenco completo dei membri (le librerie si caricano solo al clic).
+async function exportPdf(profiles, tickets) {
+  const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const rows = memberRows(profiles, tickets);
+  const today = new Date().toLocaleString('it-IT', { dateStyle: 'long', timeStyle: 'short' });
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(20); pdf.setTextColor(17, 11, 9);
+  pdf.text('BASE — Elenco membri', 14, 18);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(110, 100, 92);
+  pdf.text(`${rows.length} membri · generato il ${today} · documento riservato: contiene dati personali`, 14, 24);
+  autoTable(pdf, {
+    startY: 30,
+    head: [['#', 'Nome e cognome', 'Email', 'Telefono', 'Documento', 'Iscrizione', 'Ingressi', 'Comunic.', 'Stato']],
+    body: rows.map((r, i) => [i + 1, r.name, r.email, r.phone, r.idNumber, r.joined, r.entries, r.marketing, r.status]),
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.2, textColor: [34, 28, 24], lineColor: [222, 214, 204], lineWidth: 0.1 },
+    headStyles: { fillColor: [255, 74, 54], textColor: [17, 11, 9], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 244, 238] },
+    columnStyles: { 0: { cellWidth: 9, halign: 'right' }, 6: { halign: 'center' }, 7: { halign: 'center' } },
+    didDrawPage: () => {
+      const page = pdf.getNumberOfPages();
+      pdf.setFontSize(8); pdf.setTextColor(140, 130, 120);
+      pdf.text(`BASE — riservato · pagina ${page}`, pdf.internal.pageSize.getWidth() - 14, pdf.internal.pageSize.getHeight() - 8, { align: 'right' });
+    },
+  });
+  pdf.save(`membri-base-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 function MemberDetail({ person, tickets, eventsById, now, onClose }) {
@@ -283,6 +338,13 @@ function MemberDetail({ person, tickets, eventsById, now, onClose }) {
       <span className="eyebrow"><span className="eyebrow-line" /> SCHEDA MEMBRO</span>
       <h2>{person.fullName}</h2>
       <p className="adm-drawer-meta">{person.email}<br />Iscritto il {formatDateTime(person.createdAt)} · ID {person.id.slice(0, 8).toUpperCase()}</p>
+      <dl className="adm-person-data">
+        <div><dt>Telefono</dt><dd>{person.phone ? <a href={`tel:${person.phone}`}>{person.phone}</a> : '—'}</dd></div>
+        <div><dt>Documento</dt><dd>{person.idNumber || '—'}</dd></div>
+        <div><dt>Maggiorenne</dt><dd>{person.adult ? 'Dichiarato' : '—'}</dd></div>
+        <div><dt>Comunicazioni</dt><dd>{person.marketing ? 'Consenso dato' : 'No'}</dd></div>
+        <div><dt>Privacy</dt><dd>{person.privacyVersion ? `Accettata (v. ${person.privacyVersion})` : '—'}</dd></div>
+      </dl>
       <div className="adm-actions">
         <button disabled={busy} onClick={toggleBlock}>{person.blocked ? <><Unlock size={13} /> Riattiva</> : <><LockKeyhole size={13} /> Sospendi</>}</button>
         <button className="adm-danger" disabled={busy} onClick={removeProfile}><Trash2 size={13} /> Elimina profilo</button>
@@ -317,13 +379,16 @@ function MembersView({ profiles, tickets, events, now }) {
     return map;
   }, [tickets]);
   const term = search.trim().toLowerCase();
-  const list = profiles.filter((p) => !term || `${p.fullName} ${p.email}`.toLowerCase().includes(term)).sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+  const list = profiles.filter((p) => !term || `${p.fullName} ${p.email} ${p.phone || ''} ${p.idNumber || ''}`.toLowerCase().includes(term)).sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
   const selected = profiles.find((p) => p.id === selectedId);
 
   return <div className="members-view">
     <div className="adm-toolbar">
-      <label className="adm-search"><Search size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cerca per nome o email" /></label>
-      <button className="adm-link-button" onClick={() => exportCsv(list, tickets)}><Download size={14} /> ESPORTA CSV</button>
+      <label className="adm-search"><Search size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cerca nome, email, telefono, documento" /></label>
+      <div className="adm-export">
+        <button className="adm-link-button" onClick={() => exportPdf(list, tickets).catch(() => window.alert('Esportazione PDF non riuscita.'))}><Download size={14} /> SCARICA PDF</button>
+        <button className="adm-link-button" onClick={() => exportCsv(list, tickets)}><Download size={14} /> CSV</button>
+      </div>
     </div>
     <div className="members-table">
       <div className="members-table-head adm-members-grid"><span>MEMBRO</span><span>EMAIL</span><span>ISCRIZIONE</span><span>INGRESSI</span><span>STATO</span></div>

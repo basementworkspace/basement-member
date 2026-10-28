@@ -48,7 +48,7 @@ function LandingPoster({ event, lineup, className = '' }) {
   </div>;
 }
 
-export default function Landing({ events, ready = true, user, onJoin, onLogin, onProfile }) {
+export default function Landing({ events, ready = true, user, onJoin, onLogin, onProfile, onNavigate }) {
   const root = useRef(null);
   const glRef = useRef(null);
   const preRef = useRef(null);
@@ -282,6 +282,6 @@ export default function Landing({ events, ready = true, user, onJoin, onLogin, o
       </section>
     </main>
 
-    <footer className="lp-foot"><div className="lp-big" aria-hidden="true">BASE</div><small><span>BASE by Evening</span><button type="button" onClick={goMember}>{memberCta} →</button><span>© BASE 2026</span></small></footer>
+    <footer className="lp-foot"><div className="lp-big" aria-hidden="true">BASE</div><small><span>© BASE by Evening 2026</span><button type="button" onClick={goMember}>{memberCta} →</button><span className="lp-legal"><a href="/privacy" onClick={(e) => { e.preventDefault(); onNavigate?.('privacy'); }}>Privacy</a><a href="/cookie" onClick={(e) => { e.preventDefault(); onNavigate?.('cookie'); }}>Cookie</a></span></small></footer>
   </div>;
 }
